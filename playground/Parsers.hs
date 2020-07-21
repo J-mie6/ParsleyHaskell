@@ -53,6 +53,9 @@ boom = let foo = newRegister_ UNIT (\r0 ->
             in goo) *> pure UNIT
        in foo *> foo
 
+joinTest :: Parser Int
+joinTest = join (pure (pure (code 7)))
+
 brainfuck :: Parser [BrainFuckOp]
 brainfuck = whitespace *> bf
   where
@@ -130,7 +133,7 @@ evalBf loader =
         evalOp' Input        = write (code toInt <$> item)
 
         -- Operations
-        move :: Defunc (Tape -> Tape) -> Parser ()
+        move :: Defunc WQ (Tape -> Tape) -> Parser ()
         move = modify_ tape
         print :: Parser Char -> Parser ()
         print x = modify out (CONS <$> x)
@@ -138,5 +141,5 @@ evalBf loader =
         read = gets_ tape (code readTape)
         write :: Parser Int -> Parser ()
         write px = modify tape (code writeTape <$> px)
-        update :: Defunc (Int -> Int) -> Parser ()
+        update :: Defunc WQ (Int -> Int) -> Parser ()
         update f = write (f <$> read)

@@ -1,12 +1,12 @@
 module Parsley.Backend.Machine.Defunc (module Parsley.Backend.Machine.Defunc) where
 
 import Parsley.Backend.Machine.InputOps (PositionOps(same))
-import Parsley.Common.Utils             (Code)
+import Parsley.Common.Utils             (Code, WQ)
 
 import qualified Parsley.Core.Defunc as Core (Defunc, genDefunc, genDefunc1, genDefunc2)
 
 data Defunc a where
-  USER   :: Core.Defunc a -> Defunc a
+  USER   :: Core.Defunc WQ a -> Defunc a
   BOTTOM :: Defunc a
   SAME   :: PositionOps o => Defunc (o -> o -> Bool)
 

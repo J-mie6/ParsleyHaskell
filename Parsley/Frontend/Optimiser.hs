@@ -6,18 +6,18 @@
 module Parsley.Frontend.Optimiser (optimise) where
 
 import Prelude hiding             ((<$>))
-import Parsley.Common             (Fix(In), code, Quapplicative(..))
-import Parsley.Core.CombinatorAST (Combinator(..))
+import Parsley.Common             (Fix(In), code, Quapplicative(..), WQ)
+import Parsley.Core.CombinatorAST (CombinatorQ, Combinator(..))
 import Parsley.Core.Defunc        (Defunc(..), pattern FLIP_H, pattern COMPOSE_H, pattern FLIP_CONST)
 
-pattern (:<$>:) :: Defunc (a -> b) -> Fix Combinator a -> Combinator (Fix Combinator) b
+pattern (:<$>:) :: Defunc WQ (a -> b) -> Fix CombinatorQ a -> CombinatorQ (Fix CombinatorQ) b
 pattern f :<$>: p = In (Pure f) :<*>: p
-pattern (:$>:) :: Fix Combinator a -> Defunc b -> Combinator (Fix Combinator) b
+pattern (:$>:) :: Fix CombinatorQ a -> Defunc WQ b -> CombinatorQ (Fix CombinatorQ) b
 pattern p :$>: x = p :*>: In (Pure x)
-pattern (:<$:) :: Defunc a -> Fix Combinator b -> Combinator (Fix Combinator) a
+pattern (:<$:) :: Defunc WQ a -> Fix CombinatorQ b -> CombinatorQ (Fix CombinatorQ) a
 pattern x :<$: p = In (Pure x) :<*: p
 
-optimise :: Combinator (Fix Combinator) a -> Fix Combinator a
+optimise :: CombinatorQ (Fix CombinatorQ) a -> Fix CombinatorQ a
 -- DESTRUCTIVE OPTIMISATION
 -- Right Absorption Law: empty <*> u                    = empty
 optimise (In Empty :<*>: _)                             = In Empty

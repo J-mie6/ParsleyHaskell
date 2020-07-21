@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -fplugin=LiftPlugin #-}
 {-# LANGUAGE AllowAmbiguousTypes,
              MultiParamTypeClasses,
-             PatternSynonyms #-}
+             TypeApplications,
+             TypeFamilies #-}
 module Parsley (
     module Parsley,
     module Core,
@@ -11,6 +12,7 @@ module Parsley (
 
 import Prelude hiding             (fmap, pure, (<*), (*>), (<*>), (<$>), (<$), (>>), sequence, traverse, repeat, readFile)
 import Data.Function              (fix)
+import Data.Kind                  (Type)
 import Data.Text.IO               (readFile)
 import Debug.Trace                (trace)
 import Language.Haskell.TH.Syntax (Lift(..))
@@ -22,385 +24,398 @@ import System.Console.Pretty      (color, style, Color(Red), Style(Bold, Underli
 import Parsley.Core as Core hiding     (_pure, _satisfy, _conditional, _join)
 import Parsley.Common.Utils as THUtils (code, Quapplicative(..), WQ, Code)
 
+class (ParserOps rep, Rep rep ~ rep) => Uncode rep where uncode :: WQ a -> rep a
+instance Uncode WQ where uncode = id
+instance Uncode Id where uncode = Id . _val
+
 class ParserOps rep where
-  pure :: rep a -> Parser a
-  satisfy :: rep (Char -> Bool) -> Parser Char
-  conditional :: [(rep (a -> Bool), Parser b)] -> Parser a -> Parser b -> Parser b
-  pfoldl :: ParserOps repk => rep (b -> a -> b) -> repk b -> Parser a -> Parser b
-  pfoldl1 :: ParserOps repk => rep (b -> a -> b) -> repk b -> Parser a -> Parser b
+  type Rep rep :: Type -> Type
+  pure :: rep a -> ParserR (Rep rep) a
+  satisfy :: rep (Char -> Bool) -> ParserR (Rep rep) Char
+  conditional :: [(rep (a -> Bool), ParserR (Rep rep) b)] -> ParserR (Rep rep) a -> ParserR (Rep rep) b -> ParserR (Rep rep) b
 
 instance ParserOps WQ where
+  type Rep WQ = WQ
   pure = pure . BLACK
   satisfy = satisfy . BLACK
   conditional cs p def = conditional (map (\(f, t) -> (BLACK f, t)) cs) p def
-  pfoldl = pfoldl . BLACK
-  pfoldl1 = pfoldl1 . BLACK
 
-instance {-# INCOHERENT #-} x ~ Defunc => ParserOps x where
+instance ParserOps (Defunc r) where
+  type Rep (Defunc r) = r
   pure = _pure
   satisfy = _satisfy
   conditional = _conditional
-  pfoldl f k p = chainPost (pure k) (FLIP_H f <$> p)
-  pfoldl1 f k p = chainPost (f <$> pure k <*> p) (FLIP_H f <$> p)
 
-fmap :: ParserOps rep => rep (a -> b) -> Parser a -> Parser b
+instance {-# INCOHERENT #-} ParserOps Id where
+  type Rep Id = Id
+  pure = undefined
+  satisfy = undefined
+  conditional = undefined
+
+fmap :: (ParserOps rep, r ~ Rep rep) => rep (a -> b) -> ParserR r a -> ParserR r b
 fmap f = (pure f <*>)
 
 infixl 4 <$>
-(<$>) :: ParserOps rep => rep (a -> b) -> Parser a -> Parser b
+(<$>) :: (ParserOps rep, r ~ Rep rep) => rep (a -> b) -> ParserR r a -> ParserR r b
 (<$>) = fmap
 
-void :: Parser a -> Parser ()
+void :: ParserR r a -> ParserR r ()
 void p = p *> unit
 
 infixl 4 <$
-(<$) :: ParserOps rep => rep b -> Parser a -> Parser b
+(<$) :: (ParserOps rep, r ~ Rep rep) => rep b -> ParserR r a -> ParserR r b
 x <$ p = p *> pure x
 
 infixl 4 $>
-($>) :: ParserOps rep => Parser a -> rep b -> Parser b
+($>) :: (ParserOps rep, r ~ Rep rep) => ParserR r a -> rep b -> ParserR r b
 ($>) = flip (<$)
 
 infixl 4 <&>
-(<&>) :: ParserOps rep => Parser a -> rep (a -> b) -> Parser b
+(<&>) :: (ParserOps rep, r ~ Rep rep) => ParserR r a -> rep (a -> b) -> ParserR r b
 (<&>) = flip fmap
 
-liftA2 :: ParserOps rep => rep (a -> b -> c) -> Parser a -> Parser b -> Parser c
+liftA2 :: (ParserOps rep, r ~ Rep rep) => rep (a -> b -> c) -> ParserR r a -> ParserR r b -> ParserR r c
 liftA2 f p q = f <$> p <*> q
 
-liftA3 :: ParserOps rep => rep (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
+liftA3 :: (ParserOps rep, r ~ Rep rep) => rep (a -> b -> c -> d) -> ParserR r a -> ParserR r b -> ParserR r c -> ParserR r d
 liftA3 f p q r = f <$> p <*> q <*> r
 
-join :: Parser (Parser a) -> Parser a
+join :: ParserR r (ParserR Id a) -> ParserR r a
 join = trace joinWarning $ _join
   where
     -- TODO HasCallStack?
     joinWarning = unlines [ unwords [color Red "WARNING: `join` is", color Red (style Bold "VERY"), color Red "expensive..."]
                           , "Make sure you know what you're doing:"
                           , unwords ["    legitimate uses of `join` are", style Italic "very rare"]
-                          , unwords ["    if possible use registers/`bind` and/or selectives, or if", style Underline "absolutely necessary" ++ ",", "make sure you minimise the size of the parser inside"]
+                          , unwords ["    if possible use registers/`bind` and/or selectives, or if", style Underline "absolutely necessary" ++ ",", "make sure you minimise the size of the parserR r inside"]
                           , "This warning may be surpressed by hiding `join` from Parsley and importing Parsley.ReallyVerySlow (join)" ]
 
-many :: Parser a -> Parser [a]
+many :: ParserR r a -> ParserR r [a]
 many = pfoldr CONS EMPTY
 
-manyN :: Int -> Parser a -> Parser [a]
+manyN :: Int -> ParserR r a -> ParserR r [a]
 manyN n p = foldr (const (p <:>)) (many p) [1..n]
 
-some :: Parser a -> Parser [a]
+some :: ParserR r a -> ParserR r [a]
 some = manyN 1
 
-skipMany :: Parser a -> Parser ()
+skipMany :: ParserR r a -> ParserR r ()
 --skipMany p = let skipManyp = p *> skipManyp <|> unit in skipManyp
 skipMany = void . pfoldl CONST UNIT -- the void here will encourage the optimiser to recognise that the register is unused
 
-skipManyN :: Int -> Parser a -> Parser ()
+skipManyN :: Int -> ParserR r a -> ParserR r ()
 skipManyN n p = foldr (const (p *>)) (skipMany p) [1..n]
 
-skipSome :: Parser a -> Parser ()
+skipSome :: ParserR r a -> ParserR r ()
 skipSome = skipManyN 1
 
 infixl 3 <+>
-(<+>) :: Parser a -> Parser b -> Parser (Either a b)
-p <+> q = code Left <$> p <|> code Right <$> q
+(<+>) :: Uncode r => ParserR r a -> ParserR r b -> ParserR r (Either a b)
+p <+> q = uncode (code Left) <$> p <|> uncode (code Right) <$> q
 
-sepBy :: Parser a -> Parser b -> Parser [a]
+sepBy :: ParserR r a -> ParserR r b -> ParserR r [a]
 sepBy p sep = option EMPTY (sepBy1 p sep)
 
-sepBy1 :: Parser a -> Parser b -> Parser [a]
+sepBy1 :: ParserR r a -> ParserR r b -> ParserR r [a]
 sepBy1 p sep = p <:> many (sep *> p)
 
-endBy :: Parser a -> Parser b -> Parser [a]
+endBy :: ParserR r a -> ParserR r b -> ParserR r [a]
 endBy p sep = many (p <* sep)
 
-endBy1 :: Parser a -> Parser b -> Parser [a]
+endBy1 :: ParserR r a -> ParserR r b -> ParserR r [a]
 endBy1 p sep = some (p <* sep)
 
-sepEndBy :: Parser a -> Parser b -> Parser [a]
+sepEndBy :: ParserR r a -> ParserR r b -> ParserR r [a]
 sepEndBy p sep = option EMPTY (sepEndBy1 p sep)
 
-{-sepEndBy1 :: Parser a -> Parser b -> Parser [a]
+{-sepEndBy1 :: ParserR r a -> ParserR r b -> ParserR r [a]
 sepEndBy1 p sep =
   let seb1 = p <**> (sep *> (FLIP_H CONS <$> option EMPTY seb1)
                  <|> pure (APP_H (FLIP_H CONS) EMPTY))
   in seb1-}
 
-sepEndBy1 :: Parser a -> Parser b -> Parser [a]
+sepEndBy1 :: ParserR r a -> ParserR r b -> ParserR r [a]
 sepEndBy1 p sep = newRegister_ ID $ \acc ->
   let go = modify acc (COMPOSE_H (FLIP_H COMPOSE) CONS <$> p)
          *> (sep *> (go <|> get acc) <|> get acc)
   in go <*> pure EMPTY
 
-manyTill :: Parser a -> Parser b -> Parser [a]
+manyTill :: ParserR r a -> ParserR r b -> ParserR r [a]
 manyTill p end = let go = end $> EMPTY <|> p <:> go in go
 
-someTill :: Parser a -> Parser b -> Parser [a]
+someTill :: ParserR r a -> ParserR r b -> ParserR r [a]
 someTill p end = notFollowedBy end *> (p <:> manyTill p end)
 
 -- Additional Combinators
 {-# INLINE (<:>) #-}
 infixl 4 <:>
-(<:>) :: Parser a -> Parser [a] -> Parser [a]
+(<:>) :: ParserR r a -> ParserR r [a] -> ParserR r [a]
 (<:>) = liftA2 CONS
 
 infixl 4 <**>
-(<**>) :: Parser a -> Parser (a -> b) -> Parser b
+(<**>) :: ParserR r a -> ParserR r (a -> b) -> ParserR r b
 (<**>) = liftA2 (FLIP_H APP)
 
-unit :: Parser ()
+unit :: ParserR r ()
 unit = pure UNIT
 
 infixl 4 <~>
-(<~>) :: Parser a -> Parser b -> Parser (a, b)
-(<~>) = liftA2 (code (,))
+(<~>) :: Uncode r => ParserR r a -> ParserR r b -> ParserR r (a, b)
+(<~>) = liftA2 (uncode (code (,)))
 
 infixl 4 <~
-(<~) :: Parser a -> Parser b -> Parser a
+(<~) :: ParserR r a -> ParserR r b -> ParserR r a
 (<~) = (<*)
 
 infixl 4 ~>
-(~>) :: Parser a -> Parser b -> Parser b
+(~>) :: ParserR r a -> ParserR r b -> ParserR r b
 (~>) = (*>)
 
 infixl 1 >>
-(>>) :: Parser a -> Parser b -> Parser b
+(>>) :: ParserR r a -> ParserR r b -> ParserR r b
 (>>) = (*>)
 
 -- Auxillary functions
-sequence :: [Parser a] -> Parser [a]
+sequence :: [ParserR r a] -> ParserR r [a]
 sequence = foldr (<:>) (pure EMPTY)
 
-traverse :: (a -> Parser b) -> [a] -> Parser [b]
+traverse :: (a -> ParserR r b) -> [a] -> ParserR r [b]
 traverse f = sequence . map f
 
-string :: String -> Parser String
+string :: String -> ParserR r String
 string = traverse char
 
-oneOf :: [Char] -> Parser Char
-oneOf cs = satisfy (makeQ (flip elem cs) [||\c -> $$(ofChars cs [||c||])||])
+oneOf :: Uncode r => [Char] -> ParserR r Char
+oneOf cs = satisfy (uncode (makeQ (flip elem cs) [||\c -> $$(ofChars cs [||c||])||]))
 
-noneOf :: [Char] -> Parser Char
-noneOf cs = satisfy (makeQ (not . flip elem cs) [||\c -> not $$(ofChars cs [||c||])||])
+noneOf :: Uncode r => [Char] -> ParserR r Char
+noneOf cs = satisfy (uncode (makeQ (not . flip elem cs) [||\c -> not $$(ofChars cs [||c||])||]))
 
 ofChars :: [Char] -> Code Char -> Code Bool
 ofChars = foldr (\c rest qc -> [|| c == $$qc || $$(rest qc) ||]) (const [||False||])
 
-token :: String -> Parser String
+token :: String -> ParserR r String
 token = try . string
 
-eof :: Parser ()
+eof :: Uncode r => ParserR r ()
 eof = notFollowedBy item
 
-more :: Parser ()
+more :: Uncode r => ParserR r ()
 more = lookAhead (void item)
 
-repeat :: Int -> Parser a -> Parser [a]
+repeat :: Int -> ParserR r a -> ParserR r [a]
 repeat n p = traverse (const p) [1..n]
 
-between :: Parser o -> Parser c -> Parser a -> Parser a
+between :: ParserR r o -> ParserR r c -> ParserR r a -> ParserR r a
 between open close p = open *> p <* close
 
 -- Parsing Primitives
-char :: Char -> Parser Char
+char :: Char -> ParserR r Char
 char c = satisfy (EQ_H (CHAR c)) $> CHAR c
 
-item :: Parser Char
-item = satisfy (APP_H CONST (code True))
+item :: Uncode r => ParserR r Char
+item = satisfy (APP_H CONST (BLACK (uncode (code True))))
 
-{-notFollowedBy :: Parser a -> Parser ()
+{-notFollowedBy :: ParserR r a -> ParserR r ()
 notFollowedBy p = newRegister_ (code True) $ \ok ->
      optional (try (lookAhead p *> put_ ok (code False)))
   *> get ok <?:> (unit, empty)-}
 
 -- Composite Combinators
-optionally :: ParserOps rep => Parser a -> rep b -> Parser b
+optionally :: (ParserOps rep, r ~ Rep rep) => ParserR r a -> rep b -> ParserR r b
 optionally p x = p $> x <|> pure x
 
-optional :: Parser a -> Parser ()
+optional :: ParserR r a -> ParserR r ()
 optional = flip optionally UNIT
 
-option :: ParserOps rep => rep a -> Parser a -> Parser a
+option :: (ParserOps rep, r ~ Rep rep) => rep a -> ParserR r a -> ParserR r a
 option x p = p <|> pure x
 
-choice :: [Parser a] -> Parser a
+choice :: [ParserR r a] -> ParserR r a
 choice = foldr (<|>) empty
 
-constp :: Parser a -> Parser (b -> a)
-constp = (code const <$>)
+constp :: ParserR r a -> ParserR r (b -> a)
+constp = (CONST <$>)
 
 infixl 4 <?:>
-(<?:>) :: Parser Bool -> (Parser a, Parser a) -> Parser a
+(<?:>) :: ParserR r Bool -> (ParserR r a, ParserR r a) -> ParserR r a
 cond <?:> (p, q) = predicate ID cond p q
 
-predicate :: ParserOps rep => rep (a -> Bool) -> Parser a -> Parser b -> Parser b -> Parser b
+predicate :: (ParserOps rep, r ~ Rep rep) => rep (a -> Bool) -> ParserR r a -> ParserR r b -> ParserR r b -> ParserR r b
 predicate cond p t e = conditional [(cond, t)] p e
 
-filteredBy :: ParserOps rep => Parser a -> rep (a -> Bool) -> Parser a
+filteredBy :: (ParserOps rep, Uncode r, Rep rep ~ r) => ParserR r a -> rep (a -> Bool) -> ParserR r a
 filteredBy p f = p >??> pure f
 
 infixl 4 >?>
-(>?>) :: ParserOps rep => Parser a -> rep (a -> Bool) -> Parser a
+(>?>) :: (ParserOps rep, Uncode r, Rep rep ~ r) => ParserR r a -> rep (a -> Bool) -> ParserR r a
 (>?>) = filteredBy
 
 infixl 4 >??>
-(>??>) :: Parser a -> Parser (a -> Bool) -> Parser a
-px >??> pf = select (liftA2 (makeQ g qg) pf px) empty
+(>??>) :: Uncode r => ParserR r a -> ParserR r (a -> Bool) -> ParserR r a
+px >??> pf = select (liftA2 (uncode (makeQ g qg)) pf px) empty
   where
     g f x = if f x then Right x else Left ()
     qg = [||\f x -> if f x then Right x else Left ()||]
 
-match :: (Eq a, Lift a) => [a] -> Parser a -> (a -> Parser b) -> Parser b -> Parser b
-match vs p f = _conditional (map (\v -> (EQ_H (code v), f v)) vs) p
+match :: (Eq a, Lift a, Uncode r) => [a] -> ParserR r a -> (a -> ParserR r b) -> ParserR r b -> ParserR r b
+match vs p f = _conditional (map (\v -> (EQ_H (BLACK (uncode (code v))), f v)) vs) p
 
 infixl 1 ||=
-(||=) :: (Enum a, Bounded a, Eq a, Lift a) => Parser a -> (a -> Parser b) -> Parser b
+(||=) :: (Enum a, Bounded a, Eq a, Lift a, Uncode r) => ParserR r a -> (a -> ParserR r b) -> ParserR r b
 p ||= f = match [minBound..maxBound] p f empty
 
-when :: Parser Bool -> Parser () -> Parser ()
+when :: ParserR r Bool -> ParserR r () -> ParserR r ()
 when p q = p <?:> (q, unit)
 
-while :: Parser Bool -> Parser ()
+while :: ParserR r Bool -> ParserR r ()
 while x = fix (when x)
 
-select :: Parser (Either a b) -> Parser (a -> b) -> Parser b
+select :: ParserR r (Either a b) -> ParserR r (a -> b) -> ParserR r b
 select p q = branch p q (pure ID)
 
-fromMaybeP :: Parser (Maybe a) -> Parser a -> Parser a
-fromMaybeP pm px = select (makeQ (maybe (Left ()) Right) [||maybe (Left ()) Right||] <$> pm) (constp px)
+fromMaybeP :: Uncode r => ParserR r (Maybe a) -> ParserR r a -> ParserR r a
+fromMaybeP pm px = select (uncode (makeQ (maybe (Left ()) Right) [||maybe (Left ()) Right||]) <$> pm) (constp px)
 
-maybeP :: Parser a -> Parser (Maybe a)
-maybeP p = option (makeQ Nothing [||Nothing||]) (code Just <$> p)
+maybeP :: Uncode r => ParserR r a -> ParserR r (Maybe a)
+maybeP p = option (uncode (makeQ Nothing [||Nothing||])) (uncode (code Just) <$> p)
 
 -- Stateful Parsers
-newRegister_ :: ParserOps rep => rep a -> (forall r. Reg r a -> Parser b) -> Parser b
+newRegister_ :: (ParserOps rep, r ~ Rep rep) => rep a -> (forall r1. Reg r1 a -> ParserR r b) -> ParserR r b
 newRegister_ x = newRegister (pure x)
 
-put_ :: ParserOps rep => Reg r a -> rep a -> Parser ()
+put_ :: (ParserOps rep, r ~ Rep rep) => Reg r1 a -> rep a -> ParserR r ()
 put_ r = put r . pure
 
-gets :: Reg r a -> Parser (a -> b) -> Parser b
+gets :: Reg r1 a -> ParserR r (a -> b) -> ParserR r b
 gets r p = p <*> get r
 
-gets_ :: ParserOps rep => Reg r a -> rep (a -> b) -> Parser b
+gets_ :: (ParserOps rep, r ~ Rep rep) => Reg r1 a -> rep (a -> b) -> ParserR r b
 gets_ r = gets r . pure
 
-modify :: Reg r a -> Parser (a -> a) -> Parser ()
+modify :: Reg r1 a -> ParserR r (a -> a) -> ParserR r ()
 modify r p = put r (gets r p)
 
-modify_ :: ParserOps rep => Reg r a -> rep (a -> a) -> Parser ()
+modify_ :: (ParserOps rep, r ~ Rep rep) => Reg r1 a -> rep (a -> a) -> ParserR r ()
 modify_ r = modify r . pure
 
-move :: Reg r1 a -> Reg r2 a -> Parser ()
+move :: Reg r1 a -> Reg r2 a -> ParserR r ()
 move dst src = put dst (get src)
 
-bind :: Parser a -> (Parser a -> Parser b) -> Parser b
+bind :: ParserR r a -> (ParserR r a -> ParserR r b) -> ParserR r b
 bind p f = newRegister p (f . get)
 
-local :: Reg r a -> Parser a -> Parser b -> Parser b
+local :: Reg r1 a -> ParserR r a -> ParserR r b -> ParserR r b
 local r p q = bind (get r) $ \x -> put r p
                                 *> q
                                 <* put r x
 
-swap :: Reg r1 a -> Reg r2 a -> Parser ()
+swap :: Reg r1 a -> Reg r2 a -> ParserR r ()
 swap r1 r2 = bind (get r1) $ \x -> move r1 r2
                                 *> put r2 x
 
-rollback :: Reg r a -> Parser b -> Parser b
+rollback :: Reg r1 a -> ParserR r b -> ParserR r b
 rollback r p = bind (get r) $ \x -> p <|> put r x *> empty
 
-for :: Parser a -> Parser (a -> Bool) -> Parser (a -> a) -> Parser () -> Parser ()
+for :: forall r a. ParserR r a -> ParserR r (a -> Bool) -> ParserR r (a -> a) -> ParserR r () -> ParserR r ()
 for init cond step body =
   newRegister init $ \i ->
-    let cond' :: Parser Bool
+    let cond' :: ParserR r Bool
         cond' = gets i cond
     in when cond' (while (body *> modify i step *> cond'))
 
 -- Iterative Parsers
-{-chainPre :: Parser (a -> a) -> Parser a -> Parser a
+{-chainPre :: ParserR r (a -> a) -> ParserR r a -> ParserR r a
 chainPre op p = newRegister_ ID $ \acc ->
   let go = modify acc (FLIP_H COMPOSE <$> op) *> go
        <|> get acc
   in go <*> p -}
 
-{-chainPost :: Parser a -> Parser (a -> a) -> Parser a
+{-chainPost :: ParserR r a -> ParserR r (a -> a) -> ParserR r a
 chainPost p op = newRegister p $ \acc ->
   let go = modify acc op *> go
        <|> get acc
   in go-}
 
-chainl1' :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (b -> a -> b) -> Parser b
+chainl1' :: (ParserOps rep, r ~ Rep rep)=> rep (a -> b) -> ParserR r a -> ParserR r (b -> a -> b) -> ParserR r b
 chainl1' f p op = chainPost (f <$> p) (FLIP <$> op <*> p)
 
-chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainl1 :: ParserR r a -> ParserR r (a -> a -> a) -> ParserR r a
 chainl1 = chainl1' ID
 
-chainr1' :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (a -> b -> b) -> Parser b
+chainr1' :: (ParserOps rep, r ~ Rep rep) => rep (a -> b) -> ParserR r a -> ParserR r (a -> b -> b) -> ParserR r b
 chainr1' f p op = newRegister_ ID $ \acc ->
   let go = bind p $ \x ->
            modify acc (FLIP_H COMPOSE <$> (op <*> x)) *> go
        <|> f <$> x
   in go <**> get acc
 
-chainr1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainr1 :: ParserR r a -> ParserR r (a -> a -> a) -> ParserR r a
 chainr1 = chainr1' ID
 
-chaint' :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (Parser (a -> a -> b -> b)) -> Parser b
+chaint' :: (ParserOps rep, r ~ Rep rep) => rep (a -> b) -> ParserR r a -> ParserR r (ParserR Id (a -> a -> b -> b)) -> ParserR r b
 chaint' f p op = newRegister_ ID $ \acc ->
   let go = bind p $ \x ->
            modify acc (FLIP_H COMPOSE <$> (bind op (\g -> p <**> (_join g <*> x)))) *> go
        <|> f <$> x
   in go <**> get acc
 
-chaint :: Parser a -> Parser (Parser (a -> a -> a -> a)) -> Parser a
+chaint :: ParserR r a -> ParserR r (ParserR Id (a -> a -> a -> a)) -> ParserR r a
 chaint = chaint' ID
 
-chainr :: ParserOps rep => Parser a -> Parser (a -> a -> a) -> rep a -> Parser a
+chainr :: (ParserOps rep, r ~ Rep rep) => ParserR r a -> ParserR r (a -> a -> a) -> rep a -> ParserR r a
 chainr p op x = option x (chainr1 p op)
 
-chainl :: ParserOps rep => Parser a -> Parser (a -> a -> a) -> rep a -> Parser a
+chainl :: (ParserOps rep, r ~ Rep rep) => ParserR r a -> ParserR r (a -> a -> a) -> rep a -> ParserR r a
 chainl p op x = option x (chainl1 p op)
 
-pfoldr :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
+pfoldr :: (ParserOps repf, ParserOps repk, Rep repf ~ Rep repk, r ~ Rep repf) => repf (a -> b -> b) -> repk b -> ParserR r a -> ParserR r b
 pfoldr f k p = chainPre (f <$> p) (pure k)
 
-pfoldr1 :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
+pfoldr1 :: (ParserOps repf, ParserOps repk, Rep repf ~ Rep repk, r ~ Rep repf) => repf (a -> b -> b) -> repk b -> ParserR r a -> ParserR r b
 pfoldr1 f k p = f <$> p <*> pfoldr f k p
 
-data Level a b = InfixL  [Parser (b -> a -> b)]               (Defunc (a -> b))
-               | InfixR  [Parser (a -> b -> b)]               (Defunc (a -> b))
-               | Prefix  [Parser (b -> b)]                    (Defunc (a -> b))
-               | Postfix [Parser (b -> b)]                    (Defunc (a -> b))
-               | Ternary [Parser (Parser (a -> a -> b -> b))] (Defunc (a -> b))
+pfoldl :: (ParserOps repf, ParserOps repk, Rep repf ~ Rep repk, r ~ Rep repf)  => repf (b -> a -> b) -> repk b -> ParserR r a -> ParserR r b
+pfoldl f k p = chainPost (pure k) ((FLIP <$> pure f) <*> p)
 
-class Monolith a b c where
-  infixL  :: [Parser (b -> a -> b)]               -> c
-  infixR  :: [Parser (a -> b -> b)]               -> c
-  prefix  :: [Parser (b -> b)]                    -> c
-  postfix :: [Parser (b -> b)]                    -> c
-  ternary :: [Parser (Parser (a -> a -> b -> b))] -> c
+pfoldl1 :: (ParserOps repf, ParserOps repk, Rep repf ~ Rep repk, r ~ Rep repf) => repf (b -> a -> b) -> repk b -> ParserR r a -> ParserR r b
+pfoldl1 f k p = chainPost (f <$> pure k <*> p) ((FLIP <$> pure f) <*> p)
 
-instance x ~ a => Monolith x a (Level a a) where
+data Level r a b = InfixL  [ParserR r (b -> a -> b)]                   (Defunc r (a -> b))
+                 | InfixR  [ParserR r (a -> b -> b)]                   (Defunc r (a -> b))
+                 | Prefix  [ParserR r (b -> b)]                        (Defunc r (a -> b))
+                 | Postfix [ParserR r (b -> b)]                        (Defunc r (a -> b))
+                 | Ternary [ParserR r (ParserR Id (a -> a -> b -> b))] (Defunc r (a -> b))
+
+class Monolith r a b c where
+  infixL  :: [ParserR r (b -> a -> b)]                   -> c
+  infixR  :: [ParserR r (a -> b -> b)]                   -> c
+  prefix  :: [ParserR r (b -> b)]                        -> c
+  postfix :: [ParserR r (b -> b)]                        -> c
+  ternary :: [ParserR r (ParserR Id (a -> a -> b -> b))] -> c
+
+instance x ~ a => Monolith r x a (Level r a a) where
   infixL  = flip InfixL ID
   infixR  = flip InfixR ID
   prefix  = flip Prefix ID
   postfix = flip Postfix ID
   ternary = flip Ternary ID
 
-instance {-# INCOHERENT #-} x ~ (WQ (a -> b) -> Level a b) => Monolith a b x where
+instance {-# INCOHERENT #-} x ~ (WQ (a -> b) -> Level WQ a b) => Monolith WQ a b x where
   infixL  ops = InfixL ops . BLACK
   infixR  ops = InfixR ops . BLACK
   prefix  ops = Prefix ops . BLACK
   postfix ops = Postfix ops . BLACK
   ternary ops = Ternary ops . BLACK
 
-data Prec a b where
-  NoLevel :: Prec a a
-  Level :: Level a b -> Prec b c -> Prec a c
+data Prec r a b where
+  NoLevel :: Prec r a a
+  Level :: Level r a b -> Prec r b c -> Prec r a c
 
-monolith :: [Level a a] -> Prec a a
+monolith :: [Level r a a] -> Prec r a a
 monolith = foldr Level NoLevel
 
-precedence :: Prec a b -> Parser a -> Parser b
+precedence :: Prec r a b -> ParserR r a -> ParserR r b
 precedence NoLevel atom = atom
 precedence (Level lvl lvls) atom = precedence lvls (level lvl atom)
   where

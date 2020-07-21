@@ -3,21 +3,21 @@ module Parsley.Core.Defunc (module Parsley.Core.Defunc) where
 
 import Parsley.Common.Utils (WQ(..), Code, Quapplicative(..))
 
-data Defunc a where
-  APP     :: Defunc ((a -> b) -> a -> b)
-  COMPOSE :: Defunc ((b -> c) -> (a -> b) -> (a -> c))
-  FLIP    :: Defunc ((a -> b -> c) -> b -> a -> c)
-  APP_H   :: Defunc (a -> b) -> Defunc a -> Defunc b
-  EQ_H    :: Eq a => Defunc a -> Defunc (a -> Bool)
-  CHAR    :: Char -> Defunc Char
-  ID      :: Defunc (a -> a)
-  CONS    :: Defunc (a -> [a] -> [a])
-  CONST   :: Defunc (a -> b -> a)
-  EMPTY   :: Defunc [a]
-  UNIT    :: Defunc ()
-  BLACK   :: WQ a -> Defunc a
+data Defunc rep a where
+  APP     :: Defunc rep ((a -> b) -> a -> b)
+  COMPOSE :: Defunc rep ((b -> c) -> (a -> b) -> (a -> c))
+  FLIP    :: Defunc rep ((a -> b -> c) -> b -> a -> c)
+  APP_H   :: Defunc rep (a -> b) -> Defunc rep a -> Defunc rep b
+  EQ_H    :: Eq a => Defunc rep a -> Defunc rep (a -> Bool)
+  CHAR    :: Char -> Defunc rep Char
+  ID      :: Defunc rep (a -> a)
+  CONS    :: Defunc rep (a -> [a] -> [a])
+  CONST   :: Defunc rep (a -> b -> a)
+  EMPTY   :: Defunc rep [a]
+  UNIT    :: Defunc rep ()
+  BLACK   :: rep a -> Defunc rep a
 
-instance Quapplicative Defunc where
+instance Quapplicative (Defunc WQ) where
   makeQ x qx       = BLACK (makeQ x qx)
   _val APP         = ($)
   _val COMPOSE     = (.)
@@ -33,14 +33,14 @@ instance Quapplicative Defunc where
   _val (BLACK f)   = _val f
   _code = genDefunc
 
-pattern COMPOSE_H :: () => ((x -> y -> z) ~ ((b -> c) -> (a -> b) -> a -> c)) => Defunc x -> Defunc y -> Defunc z
+pattern COMPOSE_H :: () => ((x -> y -> z) ~ ((b -> c) -> (a -> b) -> a -> c)) => Defunc rep x -> Defunc rep y -> Defunc rep z
 pattern COMPOSE_H f g = APP_H (APP_H COMPOSE f) g
-pattern FLIP_H :: () => ((x -> y) ~ ((a -> b -> c) -> b -> a -> c)) => Defunc x -> Defunc y
+pattern FLIP_H :: () => ((x -> y) ~ ((a -> b -> c) -> b -> a -> c)) => Defunc rep x -> Defunc rep y
 pattern FLIP_H f      = APP_H FLIP f
-pattern FLIP_CONST :: () => (x ~ (a -> b -> b)) => Defunc x
+pattern FLIP_CONST :: () => (x ~ (a -> b -> b)) => Defunc rep x
 pattern FLIP_CONST    = FLIP_H CONST
 
-genDefunc :: Defunc a -> Code a
+genDefunc :: Defunc WQ a -> Code a
 genDefunc APP             = [|| \f x -> f x ||]
 genDefunc COMPOSE         = [|| \f g x -> f (g x) ||]
 genDefunc FLIP            = [|| \f x y -> f y x ||]
@@ -57,7 +57,7 @@ genDefunc EMPTY           = [|| [] ||]
 genDefunc UNIT            = [|| () ||]
 genDefunc (BLACK f)       = _code f
 
-genDefunc1 :: Defunc (a -> b) -> Code a -> Code b
+genDefunc1 :: Defunc WQ (a -> b) -> Code a -> Code b
 genDefunc1 APP             qf = [|| \x -> $$qf x ||]
 genDefunc1 COMPOSE         qf = [|| \g x -> $$qf (g x) ||]
 genDefunc1 FLIP            qf = [|| \x y -> $$qf y x ||]
@@ -69,7 +69,7 @@ genDefunc1 (EQ_H x)        qy = [|| $$(genDefunc x)  == $$qy ||]
 genDefunc1 ID              qx = qx
 genDefunc1 f               qx = [|| $$(genDefunc f) $$qx ||]
 
-genDefunc2 :: Defunc (a -> b -> c) -> Code a -> Code b -> Code c
+genDefunc2 :: Defunc WQ (a -> b -> c) -> Code a -> Code b -> Code c
 genDefunc2 APP        qf qx  = [|| $$qf $$qx ||]
 genDefunc2 COMPOSE    qf qg  = [|| \x -> $$qf ($$qg x) ||]
 genDefunc2 FLIP       qf qx  = [|| \y -> $$qf y $$qx ||]
@@ -79,7 +79,7 @@ genDefunc2 (FLIP_H f) qx qy  = genDefunc2 f qy qx
 genDefunc2 CONS       qx qxs = [|| $$qx : $$qxs ||]
 genDefunc2 f          qx qy  = [|| $$(genDefunc f) $$qx $$qy ||]
 
-instance Show (Defunc a) where
+instance Show (Defunc rep a) where
   show APP = "($)"
   show COMPOSE = "(.)"
   show FLIP = "flip"
