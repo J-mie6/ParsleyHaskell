@@ -73,7 +73,7 @@ javascript = whitespace *> many element <* eof
       , ops InfixL  [ operator "+" $> code JSAdd, operator "-" $> code JSSub ]
       , ops InfixL  [ operator "<<" $> code JSShl, operator ">>" $> code JSShr ]
       , ops InfixL  [ operator "<=" $> code JSLe, operator "<" $> code JSLt
-                , operator ">=" $> code JSGe, operator ">" $> code JSGt ]
+                    , operator ">=" $> code JSGe, operator ">" $> code JSGt ]
       , ops InfixL  [ operator "==" $> code JSEq, operator "!=" $> code JSNe ]
       , ops InfixL  [ try (operator "&") $> code JSBitAnd ]
       , ops InfixL  [ operator "^" $> code JSBitXor ]
