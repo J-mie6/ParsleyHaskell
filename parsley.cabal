@@ -30,67 +30,68 @@ flag dump-core
   default:     False
 
 library
-  exposed-modules:     Parsley,
-                       Parsley.Applicative,
-                       Parsley.Alternative,
-                       Parsley.Selective,
-                       Parsley.Register,
-                       Parsley.Combinator,
-                       Parsley.Fold,
+  exposed-modules:     Parsley
+                       Parsley.Applicative
+                       Parsley.Alternative
+                       Parsley.Selective
+                       Parsley.Register
+                       Parsley.Combinator
+                       Parsley.Fold
+                       Parsley.Patterns
                        Parsley.Precedence
 
-                       Parsley.Internal.Trace,
-                       Parsley.Internal.Verbose,
+                       Parsley.Internal.Trace
+                       Parsley.Internal.Verbose
 
-                       Parsley.Internal.Common,
-                       Parsley.Internal.Common.Fresh,
-                       Parsley.Internal.Common.Indexed,
-                       Parsley.Internal.Common.Queue,
-                       Parsley.Internal.Common.State,
-                       Parsley.Internal.Common.Utils,
-                       Parsley.Internal.Common.Vec,
+                       Parsley.Internal.Common
+                       Parsley.Internal.Common.Fresh
+                       Parsley.Internal.Common.Indexed
+                       Parsley.Internal.Common.Queue
+                       Parsley.Internal.Common.State
+                       Parsley.Internal.Common.Utils
+                       Parsley.Internal.Common.Vec
 
-                       Parsley.Internal.Core,
-                       Parsley.Internal.Core.CombinatorAST,
-                       Parsley.Internal.Core.Defunc,
-                       Parsley.Internal.Core.Identifiers,
-                       Parsley.Internal.Core.InputTypes,
-                       Parsley.Internal.Core.Primitives,
+                       Parsley.Internal.Core
+                       Parsley.Internal.Core.CombinatorAST
+                       Parsley.Internal.Core.Defunc
+                       Parsley.Internal.Core.Identifiers
+                       Parsley.Internal.Core.InputTypes
+                       Parsley.Internal.Core.Primitives
 
-                       Parsley.Internal.Frontend,
-                       Parsley.Internal.Frontend.CombinatorAnalyser,
-                       Parsley.Internal.Frontend.Compiler,
-                       Parsley.Internal.Frontend.Dependencies,
-                       Parsley.Internal.Frontend.Optimiser,
+                       Parsley.Internal.Frontend
+                       Parsley.Internal.Frontend.CombinatorAnalyser
+                       Parsley.Internal.Frontend.Compiler
+                       Parsley.Internal.Frontend.Dependencies
+                       Parsley.Internal.Frontend.Optimiser
 
-                       Parsley.Internal.Backend,
-                       Parsley.Internal.Backend.CodeGenerator,
-                       Parsley.Internal.Backend.InstructionAnalyser,
-                       Parsley.Internal.Backend.Optimiser,
+                       Parsley.Internal.Backend
+                       Parsley.Internal.Backend.CodeGenerator
+                       Parsley.Internal.Backend.InstructionAnalyser
+                       Parsley.Internal.Backend.Optimiser
 
-                       Parsley.Internal.Backend.Machine,
-                       Parsley.Internal.Backend.Machine.Defunc,
-                       Parsley.Internal.Backend.Machine.Eval,
-                       Parsley.Internal.Backend.Machine.LetBindings,
-                       Parsley.Internal.Backend.Machine.LetRecBuilder,
-                       Parsley.Internal.Backend.Machine.Identifiers,
-                       Parsley.Internal.Backend.Machine.InputOps,
-                       Parsley.Internal.Backend.Machine.InputRep,
-                       Parsley.Internal.Backend.Machine.Instructions,
-                       Parsley.Internal.Backend.Machine.Ops,
+                       Parsley.Internal.Backend.Machine
+                       Parsley.Internal.Backend.Machine.Defunc
+                       Parsley.Internal.Backend.Machine.Eval
+                       Parsley.Internal.Backend.Machine.LetBindings
+                       Parsley.Internal.Backend.Machine.LetRecBuilder
+                       Parsley.Internal.Backend.Machine.Identifiers
+                       Parsley.Internal.Backend.Machine.InputOps
+                       Parsley.Internal.Backend.Machine.InputRep
+                       Parsley.Internal.Backend.Machine.Instructions
+                       Parsley.Internal.Backend.Machine.Ops
                        Parsley.Internal.Backend.Machine.State
 
-  default-extensions:  BangPatterns,
-                       DataKinds,
-                       GADTs,
-                       FlexibleContexts,
-                       FlexibleInstances,
-                       KindSignatures,
-                       PolyKinds,
-                       RankNTypes,
-                       ScopedTypeVariables,
-                       TemplateHaskell,
-                       TypeOperators,
+  default-extensions:  BangPatterns
+                       DataKinds
+                       GADTs
+                       FlexibleContexts
+                       FlexibleInstances
+                       KindSignatures
+                       PolyKinds
+                       RankNTypes
+                       ScopedTypeVariables
+                       TemplateHaskell
+                       TypeOperators
 
                        NoStarIsType
 
