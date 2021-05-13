@@ -10,49 +10,49 @@ import Parsley.Applicative   (pure, (<*>), (<$>), (*>), (<*), (<:>), (<**>), voi
 import Parsley.Internal.Core (Parser, Defunc(FLIP, ID, COMPOSE, EMPTY, CONS, CONST, UNIT), ParserOps, pattern FLIP_H, pattern COMPOSE_H)
 import Parsley.Register      (bind, get, modify, newRegister_)
 
-import Parsley.Internal.Core.Primitives as Primitives (chainPre, chainPost)
+import Parsley.Internal.Core.Primitives as Primitives (prefix, postfix)
 
-{-chainPre :: Parser (a -> a) -> Parser a -> Parser a
-chainPre op p = newRegister_ ID $ \acc ->
+{-prefix :: Parser (a -> a) -> Parser a -> Parser a
+prefix op p = newRegister_ ID $ \acc ->
   let go = modify acc (FLIP_H COMPOSE <$> op) *> go
        <|> get acc
   in go <*> p-}
 
-{-chainPost :: Parser a -> Parser (a -> a) -> Parser a
-chainPost p op = newRegister p $ \acc ->
+{-postfix :: Parser a -> Parser (a -> a) -> Parser a
+postfix p op = newRegister p $ \acc ->
   let go = modify acc op *> go
        <|> get acc
   in go-}
 
 -- Parser Folds
 pfoldr :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
-pfoldr f k p = chainPre (f <$> p) (pure k)
+pfoldr f k p = prefix (f <$> p) (pure k)
 
 pfoldr1 :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
 pfoldr1 f k p = f <$> p <*> pfoldr f k p
 
 pfoldl :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
-pfoldl f k p = chainPost (pure k) ((FLIP <$> pure f) <*> p)
+pfoldl f k p = postfix (pure k) ((FLIP <$> pure f) <*> p)
 
 pfoldl1 :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
-pfoldl1 f k p = chainPost (f <$> pure k <*> p) ((FLIP <$> pure f) <*> p)
+pfoldl1 f k p = postfix (f <$> pure k <*> p) ((FLIP <$> pure f) <*> p)
 
 -- Chain Combinators
-chainl1' :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (b -> a -> b) -> Parser b
-chainl1' f p op = chainPost (f <$> p) (FLIP <$> op <*> p)
+infixl1 :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (b -> a -> b) -> Parser b
+infixl1 f p op = postfix (f <$> p) (FLIP <$> op <*> p)
 
 chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-chainl1 = chainl1' ID
+chainl1 = infixl1 ID
 
-chainr1' :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (a -> b -> b) -> Parser b
-chainr1' f p op = newRegister_ ID $ \acc ->
+infixr1 :: ParserOps rep => rep (a -> b) -> Parser a -> Parser (a -> b -> b) -> Parser b
+infixr1 f p op = newRegister_ ID $ \acc ->
   let go = bind p $ \x ->
            modify acc (FLIP_H COMPOSE <$> (op <*> x)) *> go
        <|> f <$> x
   in go <**> get acc
 
 chainr1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-chainr1 = chainr1' ID
+chainr1 = infixr1 ID
 
 chainr :: ParserOps rep => Parser a -> Parser (a -> a -> a) -> rep a -> Parser a
 chainr p op x = option x (chainr1 p op)

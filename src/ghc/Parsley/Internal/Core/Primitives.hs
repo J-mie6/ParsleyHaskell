@@ -71,11 +71,11 @@ _conditional cs (Parser p) (Parser def) =
 branch :: Parser (Either a b) -> Parser (a -> c) -> Parser (b -> c) -> Parser c
 branch (Parser c) (Parser p) (Parser q) = Parser (In (L (Branch c p q)))
 
-chainPre :: Parser (a -> a) -> Parser a -> Parser a
-chainPre (Parser op) (Parser p) = Parser (In (L (ChainPre op p)))
+prefix :: Parser (a -> a) -> Parser a -> Parser a
+prefix (Parser op) (Parser p) = Parser (In (L (ChainPre op p)))
 
-chainPost :: Parser a -> Parser (a -> a) -> Parser a
-chainPost (Parser p) (Parser op) = Parser (In (L (ChainPost p op)))
+postfix :: Parser a -> Parser (a -> a) -> Parser a
+postfix (Parser p) (Parser op) = Parser (In (L (ChainPost p op)))
 
 newRegister :: Parser a -> (forall r. Reg r a -> Parser b) -> Parser b
 newRegister (Parser p) f = Parser (In (R (ScopeRegister p (unParser . f))))
