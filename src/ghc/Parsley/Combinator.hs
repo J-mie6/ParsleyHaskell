@@ -4,17 +4,18 @@ module Parsley.Combinator (
     string, token,
     oneOf, noneOf,
     eof, more,
+    pos,
     someTill,
     module Primitives
   ) where
 
 import Prelude hiding                (traverse, (*>))
 import Parsley.Alternative           (manyTill)
-import Parsley.Applicative           (($>), void, traverse, (<:>), (*>))
+import Parsley.Applicative           (($>), void, traverse, (<:>), (*>), (<~>))
 import Parsley.Internal.Common.Utils ({-code, -}Code, makeQ)
 import Parsley.Internal.Core         (Parser, Defunc(CHAR, EQ_H, CONST), pattern APP_H)
 
-import Parsley.Internal.Core.Primitives as Primitives (satisfy, lookAhead, try, notFollowedBy)
+import Parsley.Internal.Core.Primitives as Primitives (satisfy, lookAhead, try, notFollowedBy, line, col)
 
 string :: String -> Parser String
 string = traverse char
@@ -36,6 +37,9 @@ eof = notFollowedBy item
 
 more :: Parser ()
 more = lookAhead (void item)
+
+pos :: Parser (Int, Int)
+pos = line <~> col
 
 -- Parsing Primitives
 char :: Char -> Parser Char

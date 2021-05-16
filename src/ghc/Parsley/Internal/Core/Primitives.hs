@@ -8,7 +8,7 @@ import Prelude hiding                      (pure)
 import Parsley.Internal.Core.CombinatorAST (Combinator(..), ScopeRegister(..), Reg(..), Parser(..))
 import Parsley.Internal.Core.Defunc        (Defunc(BLACK))
 import Parsley.Internal.Common.Indexed     (Fix(In), (:+:)(..))
-import Parsley.Internal.Common.Utils       (WQ)
+import Parsley.Internal.Common.Utils       (WQ(WQ))
 
 class ParserOps rep where
   pure :: rep a -> Parser a
@@ -61,6 +61,12 @@ notFollowedBy = Parser . In . L . NotFollowedBy . unParser
 
 try :: Parser a -> Parser a
 try = Parser . In . L . Try . unParser
+
+col :: Parser Int
+col = pure (WQ 0 [||0||])
+
+line :: Parser Int
+line = pure (WQ 0 [||0||])
 
 {-# INLINE _conditional #-}
 _conditional :: [(Defunc (a -> Bool), Parser b)] -> Parser a -> Parser b -> Parser b
