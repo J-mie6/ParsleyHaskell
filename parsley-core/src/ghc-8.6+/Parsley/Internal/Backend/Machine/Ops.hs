@@ -174,7 +174,7 @@ instance RecBuilder _o where                                                    
           loop !o# !(line :: Int) !(col :: Int) =                                                             \
         $$(run l                                                                 \
             (Γ Empty (noreturn @_o) [||$$bx o#||] (FREEVAR [||line||]) (FREEVAR [||col||]) (VCons [||handler o#||] VNil)) \
-            (voidCoins (insertSub μ [||\_ (!o#) !(line :: Int) !(col :: Int) _ -> loop o#||] ctx)))           \
+            (voidCoins (insertSub μ [||\_ (!o#) !(line :: Int) !(col :: Int) _ -> loop o# line col||] ctx)))           \
       in loop ($$unbox $$o) $$(genDefunc line) $$(genDefunc col)                                                     \
     ||];                                                                         \
   buildRec rs ctx k = let bx = box in takeFreeRegisters rs ctx (\ctx ->          \
