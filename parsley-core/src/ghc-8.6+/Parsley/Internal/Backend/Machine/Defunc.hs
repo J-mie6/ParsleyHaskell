@@ -18,6 +18,9 @@ ap2 f x y = USER (Core.ap (Core.ap (seal f) (seal x)) (seal y))
     seal (USER x) = x
     seal x        = Core.BLACK (WQ undefined (genDefunc x))
 
+black :: Code a -> Core.Defunc a
+black = Core.BLACK . WQ undefined
+
 genDefunc :: Defunc a -> Code a
 genDefunc (USER x)    = Core.genDefunc x
 genDefunc BOTTOM      = [||undefined||]
