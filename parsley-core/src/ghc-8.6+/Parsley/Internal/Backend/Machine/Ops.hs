@@ -124,7 +124,7 @@ class ReturnOps o where
 #define deriveContOps(_o)                                                                      \
 instance ContOps _o where                                                                      \
 {                                                                                              \
-  suspend m γ = [|| \x !o# -> $$(m (γ {operands = Op (FREEVAR [||x||]) (operands γ),         \
+  suspend m γ = [|| \x !o# !(line :: Int) !(col :: Int) -> $$(m (γ {operands = Op (FREEVAR [||x||]) (operands γ),         \
                                          input = [||$$box o#||],               \
                                          line = FREEVAR [||line||],      \
                                          col = FREEVAR [||col||]})) ||];                        \
