@@ -34,6 +34,7 @@ data Combinator (k :: Type -> Type) (a :: Type) where
   MakeRegister   :: ΣVar a -> k a -> k b -> Combinator k b
   GetRegister    :: ΣVar a -> Combinator k a
   PutRegister    :: ΣVar a -> k a -> Combinator k ()
+  GetPosition    :: WhichPos -> Combinator k Int
   Debug          :: String -> k a -> Combinator k a
   MetaCombinator :: MetaCombinator -> k a -> Combinator k a
 
@@ -52,6 +53,10 @@ newtype Reg (r :: Type) a = Reg (ΣVar a)
 data MetaCombinator where
   Cut         :: MetaCombinator
   RequiresCut :: MetaCombinator
+
+data WhichPos where
+  Line :: WhichPos
+  Col  :: WhichPos
 
 -- Instances
 instance IFunctor Combinator where
@@ -73,6 +78,7 @@ instance IFunctor Combinator where
   imap f (MakeRegister σ p q) = MakeRegister σ (f p) (f q)
   imap _ (GetRegister σ)      = GetRegister σ
   imap f (PutRegister σ p)    = PutRegister σ (f p)
+  imap _ (GetPosition which)  = GetPosition which
   imap f (Debug name p)       = Debug name (f p)
   imap f (MetaCombinator m p) = MetaCombinator m (f p)
 
@@ -98,6 +104,8 @@ instance Show (Fix Combinator a) where
       alg (MakeRegister σ (Const1 p) (Const1 q))    = "(make " . shows σ . " " . p . " " . q . ")"
       alg (GetRegister σ)                           = "(get " . shows σ . ")"
       alg (PutRegister σ (Const1 p))                = "(put " . shows σ . " " . p . ")"
+      alg (GetPosition Line)                        = "line"
+      alg (GetPosition Col)                         = "col"
       alg (Debug _ (Const1 p))                      = p
       alg (MetaCombinator m (Const1 p))             = p . " [" . shows m . "]"
 
@@ -125,6 +133,7 @@ traverseCombinator expose (ChainPost p op)     = do p' <- expose p; op' <- expos
 traverseCombinator expose (MakeRegister σ p q) = do p' <- expose p; q' <- expose q; pure (MakeRegister σ p' q')
 traverseCombinator _      (GetRegister σ)      = do pure (GetRegister σ)
 traverseCombinator expose (PutRegister σ p)    = do p' <- expose p; pure (PutRegister σ p')
+traverseCombinator _      (GetPosition which)  = do pure (GetPosition which)
 traverseCombinator expose (Debug name p)       = do p' <- expose p; pure (Debug name p')
 traverseCombinator _      (Pure x)             = do pure (Pure x)
 traverseCombinator _      (Satisfy f)          = do pure (Satisfy f)

@@ -39,6 +39,7 @@ coinsNeeded = fst . getConst4 . cata4 (Const4 . alg)
     alg (Make _ _ k)                           = getConst4 k
     alg (Get _ _ k)                            = getConst4 k
     alg (Put _ _ k)                            = getConst4 k
+    alg (Pos _ k)                              = getConst4 k
     alg (LogEnter _ k)                         = getConst4 k
     alg (LogExit _ k)                          = getConst4 k
     alg (MetaInstr (AddCoins _) (Const4 k))    = k
@@ -118,6 +119,7 @@ relevancy = ($ sing) . getStack . cata4 (RelevancyStack . alg)
     alg (Make _ _ k)       (SSucc n) = VCons False (getStack k n)
     alg (Get _ _ k)        n         = let VCons _ xs = getStack k (SSucc n) in xs
     alg (Put _ _ k)        (SSucc n) = VCons False (getStack k n)
+    alg (Pos _ k)          n         = let VCons _ xs = getStack k (SSucc n) in xs
     alg (LogEnter _ k)     n         = getStack k n
     alg (LogExit _ k)      n         = getStack k n
     alg (MetaInstr _ k)    n         = getStack k n

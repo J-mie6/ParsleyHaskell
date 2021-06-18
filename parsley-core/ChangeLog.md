@@ -4,3 +4,7 @@
 
 * First version. Released on an unsuspecting world.
 * Core factored out of the main `parsley` package
+
+## 1.0.1.0  -- ???
+
+* Added capability to extract position information

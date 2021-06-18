@@ -10,7 +10,7 @@ import Data.Void                                      (Void)
 import Control.Monad                                  (forM, liftM2)
 import Control.Monad.Reader                           (ask, asks, local)
 import Control.Monad.ST                               (runST)
-import Parsley.Internal.Backend.Machine.Defunc        (Defunc(FREEVAR), genDefunc, genDefunc1, ap2)
+import Parsley.Internal.Backend.Machine.Defunc        (Defunc(FREEVAR, USER), genDefunc, genDefunc1, ap2, black)
 import Parsley.Internal.Backend.Machine.Identifiers   (MVar(..), ΦVar, ΣVar)
 import Parsley.Internal.Backend.Machine.InputOps      (InputDependant(..), PositionOps, BoxOps, LogOps, InputOps(InputOps))
 import Parsley.Internal.Backend.Machine.Instructions  (Instr(..), MetaInstr(..), Access(..))
@@ -63,6 +63,7 @@ readyMachine = cata4 (Machine . alg)
     alg (Make σ c k)        = evalMake σ c k
     alg (Get σ c k)         = evalGet σ c k
     alg (Put σ c k)         = evalPut σ c k
+    alg (Pos which k)       = evalPos which k
     alg (LogEnter name k)   = evalLogEnter name k
     alg (LogExit name k)    = evalLogExit name k
     alg (MetaInstr m k)     = evalMeta m k
@@ -161,6 +162,9 @@ evalPut :: ΣVar x -> Access -> Machine s o xs n r a -> MachineMonad s o (x : xs
 evalPut σ a k = asks $! \ctx γ ->
   let Op x xs = operands γ
   in writeΣ σ a x (run k (γ {operands = xs})) ctx
+
+evalPos :: WhichPos -> Machine s o (Int : xs) n r a -> MachineMonad s o xs n r a
+evalPos _ k = evalPush (USER (black [||0||])) k
 
 evalLogEnter :: (?ops :: InputOps o, LogHandler o) => String -> Machine s o xs (Succ (Succ n)) r a -> MachineMonad s o xs (Succ n) r a
 evalLogEnter name (Machine mk) =

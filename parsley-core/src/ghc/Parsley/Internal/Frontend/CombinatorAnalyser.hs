@@ -62,6 +62,7 @@ compliance (Match p _ qs def)       = seqCompliance p (foldr1 caseCompliance (de
 compliance (MakeRegister _ l r)     = seqCompliance l r
 compliance (GetRegister _)          = FullPure
 compliance (PutRegister _ c)        = coerce c
+compliance (GetPosition _)          = FullPure
 compliance (MetaCombinator _ c)     = c
 
 newtype CutAnalysis a = CutAnalysis {doCut :: Bool -> (Fix Combinator a, Bool)}
@@ -131,6 +132,7 @@ cutAnalysis letBound = fst . ($ letBound) . doCut . zygo (CutAnalysis . alg) com
     alg (MakeRegister σ l r) cut = seqAlg (MakeRegister σ) cut (ifst l) (ifst r)
     alg (GetRegister σ) _ = (In (GetRegister σ), False)
     alg (PutRegister σ p) cut = rewrap (PutRegister σ) cut (ifst p)
+    alg (GetPosition which) _ = (In (GetPosition which), False)
     alg (MetaCombinator m p) cut = rewrap (MetaCombinator m) cut (ifst p)
 
 -- Termination Analysis (Generalised left-recursion checker)

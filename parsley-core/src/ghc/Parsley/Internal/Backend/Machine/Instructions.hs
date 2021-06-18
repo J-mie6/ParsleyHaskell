@@ -7,6 +7,7 @@ import Data.Kind                                    (Type)
 import Data.Void                                    (Void)
 import Parsley.Internal.Backend.Machine.Identifiers (MVar, ΦVar, ΣVar)
 import Parsley.Internal.Common                      (IFunctor4, Fix4(In4), Const4(..), imap4, cata4, Nat(..), One, intercalateDiff)
+import Parsley.Internal.Core.CombinatorAST          (WhichPos(..))
 
 import Parsley.Internal.Backend.Machine.Defunc as Machine (Defunc(USER))
 import Parsley.Internal.Core.Defunc            as Core    (Defunc(ID), pattern FLIP_H)
@@ -34,6 +35,7 @@ data Instr (o :: rep) (k :: [Type] -> Nat -> Type -> Type -> Type) (xs :: [Type]
   Make      :: ΣVar x -> Access -> k xs n r a -> Instr o k (x : xs) n r a
   Get       :: ΣVar x -> Access -> k (x : xs) n r a -> Instr o k xs n r a
   Put       :: ΣVar x -> Access -> k xs n r a -> Instr o k (x : xs) n r a
+  Pos       :: WhichPos -> k (Int : xs) n r a -> Instr o k xs n r a
   LogEnter  :: String -> k xs (Succ (Succ n)) r a -> Instr o k xs (Succ n) r a
   LogExit   :: String -> k xs n r a -> Instr o k xs n r a
   MetaInstr :: MetaInstr n -> k xs n r a -> Instr o k xs n r a
@@ -101,6 +103,7 @@ instance IFunctor4 (Instr o) where
   imap4 f (Make σ a k)        = Make σ a (f k)
   imap4 f (Get σ a k)         = Get σ a (f k)
   imap4 f (Put σ a k)         = Put σ a (f k)
+  imap4 f (Pos which k)       = Pos which (f k)
   imap4 f (LogEnter name k)   = LogEnter name (f k)
   imap4 f (LogExit name k)    = LogExit name (f k)
   imap4 f (MetaInstr m k)     = MetaInstr m (f k)
@@ -131,6 +134,8 @@ instance Show (Fix4 (Instr o) xs n r a) where
       alg (Make σ a k)        = "(Make " . shows σ . " " . shows a . " " . getConst4 k . ")"
       alg (Get σ a k)         = "(Get " . shows σ . " " . shows a . " " . getConst4 k . ")"
       alg (Put σ a k)         = "(Put " . shows σ . " " . shows a . " " . getConst4 k . ")"
+      alg (Pos Line k)        = "(Line " . getConst4 k . ")"
+      alg (Pos Col k)         = "(Col " . getConst4 k . ")"
       alg (LogEnter _ k)      = getConst4 k
       alg (LogExit _ k)       = getConst4 k
       alg (MetaInstr m k)     = "[" . shows m . "] " . getConst4 k
