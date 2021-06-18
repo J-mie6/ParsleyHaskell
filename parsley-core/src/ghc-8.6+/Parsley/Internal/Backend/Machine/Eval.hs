@@ -19,6 +19,7 @@ import Parsley.Internal.Backend.Machine.LetRecBuilder
 import Parsley.Internal.Backend.Machine.Ops
 import Parsley.Internal.Backend.Machine.State
 import Parsley.Internal.Common                        (Fix4, cata4, One, Code, Vec(..), Nat(..))
+import Parsley.Internal.Core.CombinatorAST            (WhichPos(..))
 import Parsley.Internal.Trace                         (Trace(trace))
 import System.Console.Pretty                          (color, Color(Green))
 
