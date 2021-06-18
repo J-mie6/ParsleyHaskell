@@ -102,10 +102,12 @@ instance HandlerOps _o where                         \
 {                                                    \
   buildHandler γ h c = [||\(o# :: Unboxed _o) ->     \
     $$(h (γ {operands = Op (FREEVAR c) (operands γ), \
-             input = [||$$box o#||]}))||];           \
-  fatal = [||\(!_) -> returnST Nothing ||];          \
+             input = [||$$box o#||],                                          \
+             line = FREEVAR [||line||],                                 \
+             col = FREEVAR [||col||]}))||];           \
+  fatal = [||\ !_ !_ !_ -> returnST Nothing ||];          \
   raise γ = let VCons h _ = handlers γ               \
-            in [|| $$h ($$unbox $$(input γ)) ||];    \
+            in [|| $$h ($$unbox $$(input γ)) $$(genDefunc (line γ)) $$(genDefunc (col γ)) ||];    \
 };
 inputInstances(deriveHandlerOps)
 
@@ -113,7 +115,7 @@ inputInstances(deriveHandlerOps)
 class BoxOps o => ContOps o where
   suspend :: (Γ s o (x : xs) n r a -> Code (ST s (Maybe a))) -> Γ s o xs n r a -> Code (Cont s o a x)
   resume :: Code (Cont s o a x) -> Γ s o (x : xs) n r a -> Code (ST s (Maybe a))
-  callWithContinuation :: Code (SubRoutine s o a x) -> Code (Cont s o a x) -> Code o -> Vec (Succ n) (Code (Handler s o a)) -> Code (ST s (Maybe a))
+  callWithContinuation :: Code (SubRoutine s o a x) -> Code (Cont s o a x) -> Code o -> Defunc Int -> Defunc Int -> Vec (Succ n) (Code (Handler s o a)) -> Code (ST s (Maybe a))
 
 class ReturnOps o where
   halt :: Code (Cont s o a a)
@@ -122,17 +124,19 @@ class ReturnOps o where
 #define deriveContOps(_o)                                                                      \
 instance ContOps _o where                                                                      \
 {                                                                                              \
-  suspend m γ = [|| \x (!o#) -> $$(m (γ {operands = Op (FREEVAR [||x||]) (operands γ),         \
-                                         input = [||$$box o#||]})) ||];                        \
-  resume k γ = let Op x _ = operands γ in [|| $$k $$(genDefunc x) ($$unbox $$(input γ)) ||];   \
-  callWithContinuation sub ret input (VCons h _) = [||$$sub $$ret ($$unbox $$input) $! $$h||]; \
+  suspend m γ = [|| \x !o# -> $$(m (γ {operands = Op (FREEVAR [||x||]) (operands γ),         \
+                                         input = [||$$box o#||],               \
+                                         line = FREEVAR [||line||],      \
+                                         col = FREEVAR [||col||]})) ||];                        \
+  resume k γ = let Op x _ = operands γ in [|| $$k $$(genDefunc x) ($$unbox $$(input γ)) $$(genDefunc (line γ)) $$(genDefunc (col γ)) ||];   \
+  callWithContinuation sub ret input line col (VCons h _) = [||$$sub $$ret ($$unbox $$input) $$(genDefunc line) $$(genDefunc col) $! $$h||]; \
 };
 inputInstances(deriveContOps)
 
 #define deriveReturnOps(_o)                                      \
 instance ReturnOps _o where                                      \
 {                                                                \
-  halt = [||\x _ -> returnST $! Just x||];                       \
+  halt = [||\x _ _ _ -> returnST $! Just x||];                   \
   noreturn = [||\_ _ -> error "Return is not permitted here"||]; \
 };
 inputInstances(deriveReturnOps)
@@ -144,7 +148,7 @@ class BoxOps o => JoinBuilder o where
 class BoxOps o => RecBuilder o where
   buildIter :: ReturnOps o
             => Ctx s o a -> MVar Void -> Machine s o '[] One Void a
-            -> (Code o -> Code (Handler s o a)) -> Code o -> Code (ST s (Maybe a))
+            -> (Code o -> Code (Handler s o a)) -> Code o -> Defunc Int -> Defunc Int -> Code (ST s (Maybe a))
   buildRec  :: Regs rs
             -> Ctx s o a
             -> Machine s o '[] One r a
@@ -155,8 +159,8 @@ instance JoinBuilder _o where                                                   
 {                                                                                         \
   setupJoinPoint φ (Machine k) mx =                                                       \
     liftM2 (\mk ctx γ -> [||                                                              \
-      let join x !(o# :: Unboxed _o) =                                                    \
-        $$(mk (γ {operands = Op (FREEVAR [||x||]) (operands γ), input = [||$$box o#||]})) \
+      let join x !(o# :: Unboxed _o) !(line :: Int) !(col :: Int) =                                                    \
+        $$(mk (γ {operands = Op (FREEVAR [||x||]) (operands γ), input = [||$$box o#||], line = FREEVAR [||line||], col = FREEVAR [||col||]})) \
       in $$(run mx γ (insertΦ φ [||join||] ctx))                                          \
     ||]) (local voidCoins k) ask;                                                         \
 };
@@ -165,17 +169,17 @@ inputInstances(deriveJoinBuilder)
 #define deriveRecBuilder(_o)                                                     \
 instance RecBuilder _o where                                                     \
 {                                                                                \
-  buildIter ctx μ l h o = let bx = box in [||                                    \
+  buildIter ctx μ l h o line col = let bx = box in [||                                    \
       let handler !o# = $$(h [||$$bx o#||]);                                     \
-          loop !o# =                                                             \
+          loop !o# !(line :: Int) !(col :: Int) =                                                             \
         $$(run l                                                                 \
-            (Γ Empty (noreturn @_o) [||$$bx o#||] (VCons [||handler o#||] VNil)) \
-            (voidCoins (insertSub μ [||\_ (!o#) _ -> loop o#||] ctx)))           \
-      in loop ($$unbox $$o)                                                      \
+            (Γ Empty (noreturn @_o) [||$$bx o#||] (FREEVAR [||line||]) (FREEVAR [||col||]) (VCons [||handler o#||] VNil)) \
+            (voidCoins (insertSub μ [||\_ (!o#) !(line :: Int) !(col :: Int) _ -> loop o#||] ctx)))           \
+      in loop ($$unbox $$o) $$(genDefunc line) $$(genDefunc col)                                                     \
     ||];                                                                         \
   buildRec rs ctx k = let bx = box in takeFreeRegisters rs ctx (\ctx ->          \
-    [|| \(!ret) (!o#) h ->                                                       \
-      $$(run k (Γ Empty [||ret||] [||$$bx o#||] (VCons [||h||] VNil)) ctx) ||]); \
+    [|| \ !ret !o# !(line :: Int) !(col :: Int) h ->                                                       \
+      $$(run k (Γ Empty [||ret||] [||$$bx o#||] (FREEVAR [||line||]) (FREEVAR [||col||]) (VCons [||h||] VNil)) ctx) ||]); \
 };
 inputInstances(deriveRecBuilder)
 

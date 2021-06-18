@@ -10,7 +10,7 @@ import Data.Void                                      (Void)
 import Control.Monad                                  (forM, liftM2)
 import Control.Monad.Reader                           (ask, asks, local)
 import Control.Monad.ST                               (runST)
-import Parsley.Internal.Backend.Machine.Defunc        (Defunc(FREEVAR, USER), genDefunc, genDefunc1, ap2, black)
+import Parsley.Internal.Backend.Machine.Defunc        (Defunc(FREEVAR), genDefunc, genDefunc1, ap2)
 import Parsley.Internal.Backend.Machine.Identifiers   (MVar(..), ΦVar, ΣVar)
 import Parsley.Internal.Backend.Machine.InputOps      (InputDependant(..), PositionOps, BoxOps, LogOps, InputOps(InputOps))
 import Parsley.Internal.Backend.Machine.Instructions  (Instr(..), MetaInstr(..), Access(..))
@@ -32,7 +32,7 @@ eval input (LetBinding !p _) fs = trace ("EVALUATING TOP LEVEL") [|| runST $
         in letRec fs
              nameLet
              (\exp rs names -> buildRec rs (emptyCtx names) (readyMachine exp))
-             (\names -> run (readyMachine p) (Γ Empty (halt @o) [||offset||] (VCons (fatal @o) VNil)) (emptyCtx names)))
+             (\names -> run (readyMachine p) (Γ Empty (halt @o) [||offset||] (FREEVAR [||1||]) (FREEVAR [||1||]) (VCons (fatal @o) VNil)) (emptyCtx names)))
   ||]
   where
     nameLet :: MVar x -> String
@@ -73,10 +73,10 @@ evalRet :: ContOps o => MachineMonad s o (x : xs) n x a
 evalRet = return $! retCont >>= resume
 
 evalCall :: ContOps o => MVar x -> Machine s o (x : xs) (Succ n) r a -> MachineMonad s o xs (Succ n) r a
-evalCall μ (Machine k) = liftM2 (\mk sub γ@Γ{..} -> callWithContinuation sub (suspend mk γ) input handlers) k (askSub μ)
+evalCall μ (Machine k) = liftM2 (\mk sub γ@Γ{..} -> callWithContinuation sub (suspend mk γ) input line col handlers) k (askSub μ)
 
 evalJump :: ContOps o => MVar x -> MachineMonad s o '[] (Succ n) x a
-evalJump μ = askSub μ <&> \sub Γ{..} -> callWithContinuation sub retCont input handlers
+evalJump μ = askSub μ <&> \sub Γ{..} -> callWithContinuation sub retCont input line col handlers
 
 evalPush :: Defunc x -> Machine s o (x : xs) n r a -> MachineMonad s o xs n r a
 evalPush x (Machine k) = k <&> \m γ -> m (γ {operands = Op x (operands γ)})
@@ -135,7 +135,7 @@ evalChoices fs ks (Machine def) = liftM2 (\mdef mks γ -> let Op x xs = operands
 evalIter :: (RecBuilder o, ReturnOps o, HandlerOps o)
          => MVar Void -> Machine s o '[] One Void a -> Machine s o (o : xs) n r a
          -> MachineMonad s o xs n r a
-evalIter μ l (Machine h) = liftM2 (\mh ctx γ -> buildIter ctx μ l (buildHandler γ mh) (input γ)) h ask
+evalIter μ l (Machine h) = liftM2 (\mh ctx γ -> buildIter ctx μ l (buildHandler γ mh) (input γ) (line γ) (col γ)) h ask
 
 evalJoin :: ContOps o => ΦVar x -> MachineMonad s o (x : xs) n r a
 evalJoin φ = askΦ φ <&> resume
@@ -165,7 +165,10 @@ evalPut σ a k = asks $! \ctx γ ->
   in writeΣ σ a x (run k (γ {operands = xs})) ctx
 
 evalPos :: WhichPos -> Machine s o (Int : xs) n r a -> MachineMonad s o xs n r a
-evalPos _ k = evalPush (USER (black [||0||])) k
+evalPos which (Machine k) = k <&> \m γ -> m (γ {operands = Op (selector which γ) (operands γ)})
+  where
+    selector Line = line
+    selector Col = col
 
 evalLogEnter :: (?ops :: InputOps o, LogHandler o) => String -> Machine s o xs (Succ (Succ n)) r a -> MachineMonad s o xs (Succ n) r a
 evalLogEnter name (Machine mk) =
