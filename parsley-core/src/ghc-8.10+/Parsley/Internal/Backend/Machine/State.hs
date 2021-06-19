@@ -33,7 +33,7 @@ import qualified Data.Dependent.Map as DMap             ((!), insert, empty, loo
 import qualified Parsley.Internal.Common.Queue as Queue (empty, null, foldr)
 
 type HandlerStack n s o a = Vec n (Code (Handler s o a))
-type Handler s o a = Rep o -> Int -> Int -> ST s (Maybe a)
+type Handler s o a = Rep o -> ST s (Maybe a)
 type Cont s o a x = x -> Rep o -> Int -> Int -> ST s (Maybe a)
 type SubRoutine s o a x = Cont s o a x -> Rep o -> Int -> Int -> Handler s o a -> ST s (Maybe a)
 type MachineMonad s o xs n r a = Reader (Ctx s o a) (Γ s o xs n r a -> Code (ST s (Maybe a)))

@@ -106,17 +106,15 @@ setupHandler γ h k = [||
   ||]
 
 raise :: Γ s o xs (Succ n) r a -> Code (ST s (Maybe a))
-raise γ = let VCons h _ = handlers γ in [|| $$h $$(input γ) $$(genDefunc (line γ)) $$(genDefunc (col γ)) ||]
+raise γ = let VCons h _ = handlers γ in [|| $$h $$(input γ) ||]
 
 #define deriveHandlerOps(_o)                                            \
 instance HandlerOps _o where                                            \
 {                                                                       \
-  buildHandler γ h c = [||\(o# :: Rep _o) (line :: Int) (col :: Int) -> \
+  buildHandler γ h c = [||\(o# :: Rep _o) -> \
     $$(h (γ {operands = Op (OFFSET c) (operands γ),                     \
-             input = [||o#||],                                          \
-             line = FREEVAR [||line||],                                 \
-             col = FREEVAR [||col||]}))||];                             \
-  fatal = [||\ !_ !_ !_ -> returnST Nothing ||];                   \
+             input = [||o#||]}))||];                             \
+  fatal = [||\ !_ -> returnST Nothing ||];                   \
 };
 inputInstances(deriveHandlerOps)
 
@@ -137,7 +135,7 @@ resume k γ = let Op x _ = operands γ in [|| $$k $$(genDefunc x) $$(input γ) $
 #define deriveContOps(_o)                                                \
 instance ContOps _o where                                                \
 {                                                                        \
-  suspend m γ = [|| \x !o# !(line :: Int) !(col :: Int) ->             \
+  suspend m γ = [|| \x !o# (line :: Int) (col :: Int) ->             \
     $$(m (γ {operands = Op (FREEVAR [||x||]) (operands γ),               \
                                          input = [||o#||],               \
                                          line = FREEVAR [||line||],      \
@@ -171,7 +169,7 @@ instance JoinBuilder _o where                                                   
 {                                                                                         \
   setupJoinPoint φ (Machine k) mx =                                                       \
     liftM2 (\mk ctx γ -> [||                                                              \
-      let join x !(o# :: Rep _o) !(line :: Int) !(col :: Int) =                           \
+      let join x !(o# :: Rep _o) (line :: Int) (col :: Int) =                           \
         $$(mk (γ {operands = Op (FREEVAR [||x||]) (operands γ),                           \
                   input = [||o#||], line = FREEVAR [||line||], col = FREEVAR [||col||]})) \
       in $$(run mx γ (insertΦ φ [||join||] ctx))                                          \
@@ -184,14 +182,14 @@ instance RecBuilder _o where                                                \
 {                                                                           \
   buildIter ctx μ l h o line col = [||                                               \
       let handler !o# = $$(h [||o#||]);                                     \
-          loop !o# !(line :: Int) !(col :: Int) =                           \
+          loop !o# (line :: Int) (col :: Int) =                           \
         $$(run l                                                            \
             (Γ Empty (noreturn @_o) [||o#||] (FREEVAR [||line||]) (FREEVAR [||col||]) (VCons [||handler o#||] VNil)) \
-            (voidCoins (insertSub μ [||\_ (!o#) !(line :: Int) !(col :: Int) _ -> loop o# line col||] ctx)))      \
+            (voidCoins (insertSub μ [||\_ (!o#) (line :: Int) (col :: Int) _ -> loop o# line col||] ctx)))      \
       in loop $$o $$(genDefunc line) $$(genDefunc col)                                                           \
     ||];                                                                    \
   buildRec rs ctx k = takeFreeRegisters rs ctx (\ctx ->                     \
-    [|| \ !ret !o# !(line :: Int) !(col :: Int) h ->                     \
+    [|| \ !ret !o# (line :: Int) (col :: Int) h ->                     \
       $$(run k (Γ Empty [||ret||] [||o#||] (FREEVAR [||line||]) (FREEVAR [||col||]) (VCons [||h||] VNil)) ctx) ||]); \
 };
 inputInstances(deriveRecBuilder)
