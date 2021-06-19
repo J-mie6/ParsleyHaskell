@@ -1,9 +1,9 @@
 *.hi
 *.o
 *.svg
-/dist-newstyle/
+*dist-newstyle/
 *.dump*
-/dump-core/
+*dump-core/
 *.hp
 *.prof
 *.verbose-core2core
