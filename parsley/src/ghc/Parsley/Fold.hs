@@ -17,8 +17,8 @@ module Parsley.Fold (
     sepBy, sepBy1, endBy, endBy1, sepEndBy, sepEndBy1,
     chainl1, chainr1, chainl, chainr,
     infixl1, infixr1, prefix, postfix,
-    pfoldr, pfoldl,
-    pfoldr1, pfoldl1
+    manyr, manyl,
+    somer, somel
   ) where
 
 import Prelude hiding      (pure, (<*>), (<$>), (*>), (<*))
@@ -41,44 +41,44 @@ postfix p op = newRegister p $ \acc ->
 
 -- Parser Folds
 {-|
-@pfoldr f k p@ parses __zero__ or more @p@s and combines the results using the function @f@. When @p@
+@manyr f k p@ parses __zero__ or more @p@s and combines the results using the function @f@. When @p@
 fails without consuming input, the terminal result @k@ is returned.
 
-> many = pfoldr CONS EMPTY
+> many = manyr CONS EMPTY
 
 @since 0.1.0.0
 -}
-pfoldr :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
-pfoldr f k p = prefix (f <$> p) (pure k)
+manyr :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
+manyr f k p = prefix (f <$> p) (pure k)
 
 {-|
-@pfoldr1 f k p@ parses __one__ or more @p@s and combines the results using the function @f@. When @p@
+@somer f k p@ parses __one__ or more @p@s and combines the results using the function @f@. When @p@
 fails without consuming input, the terminal result @k@ is returned.
 
-> some = pfoldr1 CONS EMPTY
+> some = somer CONS EMPTY
 
 @since 0.1.0.0
 -}
-pfoldr1 :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
-pfoldr1 f k p = f <$> p <*> pfoldr f k p
+somer :: (ParserOps repf, ParserOps repk) => repf (a -> b -> b) -> repk b -> Parser a -> Parser b
+somer f k p = f <$> p <*> manyr f k p
 
 {-|
-@pfoldl f k p@ parses __zero__ or more @p@s and combines the results using the function @f@. The
+@manyl f k p@ parses __zero__ or more @p@s and combines the results using the function @f@. The
 accumulator is initialised with the value @k@.
 
 @since 0.1.0.0
 -}
-pfoldl :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
-pfoldl f k p = postfix (pure k) ((FLIP <$> pure f) <*> p)
+manyl :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
+manyl f k p = postfix (pure k) ((FLIP <$> pure f) <*> p)
 
 {-|
-@pfoldl1 f k p@ parses __one__ or more @p@s and combines the results using the function @f@. The
+@somel f k p@ parses __one__ or more @p@s and combines the results using the function @f@. The
 accumulator is initialised with the value @k@.
 
 @since 0.1.0.0
 -}
-pfoldl1 :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
-pfoldl1 f k p = postfix (f <$> pure k <*> p) ((FLIP <$> pure f) <*> p)
+somel :: (ParserOps repf, ParserOps repk) => repf (b -> a -> b) -> repk b -> Parser a -> Parser b
+somel f k p = postfix (f <$> pure k <*> p) ((FLIP <$> pure f) <*> p)
 
 -- Chain Combinators
 {-|
@@ -149,7 +149,7 @@ into a list. Same as @manyN 0@
 @since 0.1.0.0
 -}
 many :: Parser a -> Parser [a]
-many = pfoldr CONS EMPTY
+many = manyr CONS EMPTY
 
 {-|
 Attempts to parse the given parser __n__ or more times, collecting all of the successful results
@@ -176,7 +176,7 @@ Like `many`, excepts discards its results.
 -}
 skipMany :: Parser a -> Parser ()
 --skipMany p = let skipManyp = p *> skipManyp <|> unit in skipManyp
-skipMany = void . pfoldl CONST UNIT -- the void here will encourage the optimiser to recognise that the register is unused
+skipMany = void . manyl CONST UNIT -- the void here will encourage the optimiser to recognise that the register is unused
 
 {-|
 Like `manyN`, excepts discards its results.
